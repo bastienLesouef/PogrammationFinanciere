@@ -17,6 +17,7 @@ class OptionPricing:
         self.n = nb_sub
         self.dates = np.linspace(0, self.T, self.n + 1)
         self.prices = np.zeros((self.n + 1, self.N)) + initial_price
+        self.drift = math.sqrt(self.T/self.n)
 
     def g(self, t, x):
         # modele de vol et modele de moyenne
@@ -32,7 +33,7 @@ class OptionPricing:
                 # first we calculate the actual price called st_act_price
                 st_act_price = \
                     st_act_price + self.g(self.dates[i], st_act_price) * \
-                    st_act_price * math.sqrt(self.T/self.n) * sim.randn()
+                    st_act_price * self.drift * sim.randn()
 
                 self.prices[i, j] = st_act_price * math.exp(self.r * self.dates[i])
 
@@ -64,7 +65,7 @@ class OptionPricingRateModel(OptionPricing):
         self.rate = np.zeros((self.n + 1, self.N)) + 1
 
     def vasicek(self, r, t1, t2, a, b, gamma):
-        return r + a * (b - r)*(t2 - t1) + gamma * math.sqrt(self.T/self.n) * sim.randn()
+        return r + a * (b - r)*(t2 - t1) + gamma * self.drift * sim.randn()
 
     def compute_rate(self, a, b, gamma):
         """
@@ -79,8 +80,8 @@ class OptionPricingRateModel(OptionPricing):
             # initial value
             rt = 0.01
             for i in range(1, self.n + 1):
-                r0 = self.vasicek(rt, self.dates[i], self.dates[i - 1], a, b, gamma)
                 self.rate[i, j] = self.rate[i - 1, j] + rt * self.rate[i - 1, j] * (self.dates[i] - self.dates[i - 1])
+                rt = self.vasicek(rt, self.dates[i-1], self.dates[i], a, b, gamma)
 
     def prices_cal(self):
         """
@@ -93,16 +94,20 @@ class OptionPricingRateModel(OptionPricing):
                 # first we calculate the actual price called st_act_price
                 st_act_price = \
                     st_act_price + self.g(self.dates[i], st_act_price) * \
-                    st_act_price * math.sqrt(self.T/self.n) * sim.randn()
+                    st_act_price * self.drift * sim.randn()
 
                 # we use the Vasicek rate model
                 self.prices[i, j] = st_act_price * self.rate[i, j]
 
     def european_call(self, strike):
-        """ return the price of an european call"""
+        """
+        return the price of an european call
+        :param strike: the strike
+        :return: European call price
+        """
         payoff = []
         for j in range(self.N):
-            payoff.append(self.call(self.prices[self.n, j], strike) * self.rate[self.n, j])
+            payoff.append(self.call(self.prices[self.n, j], strike) / self.rate[self.n, j])
 
         return np.mean(payoff)
 
@@ -112,6 +117,6 @@ class OptionPricingRateModel(OptionPricing):
         for j in range(self.N):
             # the path average
             avg = np.mean(self.prices[:, j])
-            payoff.append(self.call(avg, strike) * self.rate[self.n, j])
+            payoff.append(self.call(avg, strike) / self.rate[self.n, j])
 
         return np.mean(payoff)
